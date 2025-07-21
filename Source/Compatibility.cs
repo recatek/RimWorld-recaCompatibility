@@ -84,11 +84,11 @@ namespace recatek.Compatibility
         }
     }
 
-    [HarmonyPatch(typeof(Pawn_RelationsTracker), "CompatibilityWith", new Type[] { typeof(Pawn) })]
+    [HarmonyPatch(typeof(Pawn_RelationsTracker), nameof(Pawn_RelationsTracker.CompatibilityWith))]
     public static class CompatibilityWith_Patch
     {
         [HarmonyPostfix]
-        private static void CompatibilityWith_Postfix(ref float __result, ref Pawn ___pawn, ref Pawn otherPawn)
+        private static void CompatibilityWith_Postfix(ref float __result, ref Pawn ___pawn, Pawn otherPawn)
         {
             var overrides = Current.Game.GetComponent<CompatibilityOverrides>();
             if (overrides.TryGetOverride(___pawn, otherPawn, out float value))
@@ -135,8 +135,7 @@ namespace recatek.Compatibility
             return debugMenuOptionList;
         }
 
-
-        [DebugAction("Pawns", "T: Override compatibility", false, false, false, false, false, 0, false, actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        [DebugAction(category = "Pawns", name = "T: Override compatibility", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
         private static void OverrideCompatibility()
         {
             DebugTool tool = null;
