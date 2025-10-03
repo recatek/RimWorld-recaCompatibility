@@ -1,35 +1,58 @@
 ﻿using System;
-using Verse;
-using HarmonyLib;
-using RimWorld;
 using System.Collections.Generic;
+
 using LudeonTK;
+using RimWorld;
+using Verse;
+
+using HarmonyLib;
+using UnityEngine;
 
 namespace recatek.Compatibility
 {
     [StaticConstructorOnStartup]
-    public class Compatibility
+    public class Compatibility_Startup
     {
-        static Compatibility()
+        static Compatibility_Startup()
         {
             Harmony harmony = new Harmony("rimworld.mod.recatek.compatibility");
             harmony.PatchAll();
         }
     }
 
-    public class CompatibilityConfig : Mod
+    class Compatibility_Mod : Mod
+    {
+        public Compatibility_Settings Settings { get; }
+
+        public override string SettingsCategory()
+        {
+            return "recaCompatibility";
+        }
+
+        public Compatibility_Mod(ModContentPack content) : base(content)
+        {
+            Settings = GetSettings<Compatibility_Settings>();
+        }
+    }
+
+    class Compatibility_Settings : ModSettings
     {
         public float MinValue => -10.0f;
         public float MaxValue => 10.0f;
         public float Step => 0.5f;
 
-        public CompatibilityConfig(ModContentPack content) : base(content)
+        public override void ExposeData()
         {
-            // TODO: Load settings and make the above values configurable.
+            base.ExposeData();
+        }
+
+        public bool DoSettingsWindowContents(Listing_Standard listing)
+        {
+            return false;
         }
     }
 
-    public class CompatibilityOverrides : GameComponent
+    class Compatibility_Overrides : GameComponent
     {
         public static string PawnsToKey(Pawn pawn1, Pawn pawn2)
         {
@@ -47,9 +70,9 @@ namespace recatek.Compatibility
 
         private Dictionary<string, float> overrides;
 
-        public CompatibilityOverrides(Game game) : base()
+        public Compatibility_Overrides(Game game) : base()
         {
-            // Do nothing
+            // Pass
         }
 
         public bool TryGetOverride(Pawn pawn1, Pawn pawn2, out float value)
@@ -84,19 +107,7 @@ namespace recatek.Compatibility
         }
     }
 
-    [HarmonyPatch(typeof(Pawn_RelationsTracker), nameof(Pawn_RelationsTracker.CompatibilityWith))]
-    public static class CompatibilityWith_Patch
-    {
-        [HarmonyPostfix]
-        private static void CompatibilityWith_Postfix(ref float __result, ref Pawn ___pawn, Pawn otherPawn)
-        {
-            var overrides = Current.Game.GetComponent<CompatibilityOverrides>();
-            if (overrides.TryGetOverride(___pawn, otherPawn, out float value))
-                __result = value;
-        }
-    }
-
-    public static class CompatibilityDebugTools
+    static class Compatibility_DebugTools
     {
         private static bool TryGetPawnAt(IntVec3 c, out Pawn found)
         {
@@ -116,7 +127,7 @@ namespace recatek.Compatibility
 
         private static List<DebugMenuOption> Options_Override_Compatibility(Pawn pawn1, Pawn pawn2)
         {
-            var overrides = Current.Game.GetComponent<CompatibilityOverrides>();
+            var overrides = Current.Game.GetComponent<Compatibility_Overrides>();
             List<DebugMenuOption> debugMenuOptionList = new List<DebugMenuOption>();
 
             if (overrides.TryGetOverride(pawn1, pawn2, out float currentValue))
@@ -125,8 +136,9 @@ namespace recatek.Compatibility
             }
 
             const float epsilon = 0.01f;
-            var config = LoadedModManager.GetMod<CompatibilityConfig>();
-            for (float value = config.MinValue; value <= config.MaxValue + epsilon; value += config.Step)
+            var settings = LoadedModManager.GetMod<Compatibility_Mod>().Settings;
+
+            for (float value = settings.MinValue; value <= settings.MaxValue + epsilon; value += settings.Step)
             {
                 float capturedValue = value; // Capture the current value for the lambda
                 debugMenuOptionList.Add(new DebugMenuOption(value.ToString("F1"), DebugMenuOptionMode.Action, () => overrides.SetOverride(pawn1, pawn2, capturedValue)));
@@ -138,13 +150,15 @@ namespace recatek.Compatibility
         [DebugAction(category = "Pawns", name = "T: Override compatibility", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap)]
         private static void OverrideCompatibility()
         {
+            var overrides = Current.Game.GetComponent<Compatibility_Overrides>();
             DebugTool tool = null;
-            
+
             tool = new DebugTool("First pawn...", () =>
             {
                 if (TryGetPawnAt(UI.MouseCell(), out Pawn pawn1))
                 {
-                    DebugTools.curTool = new DebugTool("Second pawn...", () =>
+                    DebugTools.curTool = new DebugTool("Second pawn...",
+                    clickAction: () =>
                     {
                         if (TryGetPawnAt(UI.MouseCell(), out Pawn pawn2))
                         {
@@ -152,6 +166,19 @@ namespace recatek.Compatibility
                         }
 
                         DebugTools.curTool = null;
+                    },
+                    onGUIAction: () =>
+                    {
+                        if (TryGetPawnAt(UI.MouseCell(), out Pawn pawn2))
+                        {
+                            if (overrides.TryGetOverride(pawn1, pawn2, out float value))
+                            {
+                                Vector2 vector = Event.current.mousePosition + new Vector2(15f, 30f);
+                                Rect rect = new Rect(vector.x, vector.y, 999f, 999f);
+                                Text.Font = GameFont.Small;
+                                DevGUI.Label(rect, $"Current overridden compatibility: {value:F1}");
+                            }
+                        }
                     });
                 }
             });
@@ -159,4 +186,18 @@ namespace recatek.Compatibility
             DebugTools.curTool = tool;
         }
     }
+
+    [HarmonyPatch(typeof(Pawn_RelationsTracker), nameof(Pawn_RelationsTracker.CompatibilityWith))]
+    class Patch_Pawn_RelationsTracker_CompatibilityWith
+    {
+        // public float CompatibilityWith(Pawn otherPawn)
+        [HarmonyPostfix]
+        private static void Postfix(ref float __result, ref Pawn ___pawn, Pawn otherPawn)
+        {
+            var overrides = Current.Game.GetComponent<Compatibility_Overrides>();
+            if (overrides.TryGetOverride(___pawn, otherPawn, out float value))
+                __result = value;
+        }
+    }
+
 }
